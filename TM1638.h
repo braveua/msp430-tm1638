@@ -14,7 +14,7 @@
 #define DIOIN   P1DIR &= ~(DIO);
 
 #define STB BIT5 //Strobe
-#define DIO BIT2 //Data in/out
+#define DIO BIT3 //Data in/out (Moved to P1.3)
 #define CLK BIT4 //clock
 
 #define RED_TM1638 0x02 //RED Led
