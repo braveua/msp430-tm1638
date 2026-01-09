@@ -117,6 +117,9 @@ int main(void) {
 }
 
 void ShowClock(TM1638& disp){
+	// disp.ShowLed(1,1); //green
+	// disp.ShowLed(2,2); //red
+	// disp.ShowLed(3,3); //yellow
 	if(hsflag) {
         // Blink dots at pos 2 and 5
 		disp.ShowSymbol(5,(halfSeconds & 1)?13:10,0);

@@ -1,3 +1,4 @@
 *.o
 *.hex
 *.elf
+compile_commands.json
