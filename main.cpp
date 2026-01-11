@@ -4,6 +4,8 @@
  */
 #include <msp430.h>
 #include "TM1638.h"
+#include <string.h>
+#include <stdlib.h>
 
 #define RED_LED BIT0
 #define GREEN_LED BIT6
@@ -21,8 +23,14 @@ volatile bool mflag=true;
 volatile bool hflag=true;
 volatile bool hsflag=true;
 
+// UART Buffer
+char rx_buf[64];
+volatile int rx_idx = 0;
+volatile bool msg_ready = false;
+
 // Function Prototypes
 void InitSystem();
+void InitUART();
 void ShowClock(TM1638& disp);
 
 int main(void) {
@@ -60,6 +68,9 @@ int main(void) {
     // 5. Init Display
     disp.Init(); 
     
+    // 6. Init UART
+    InitUART();
+    
     // 6. Setup Timer
 	CCTL0 = CCIE;					// CCR0 interrupt enabled
 	CCR0 = 15;						// Period 16. Freq = 32768/8/8/16 = 32Hz.
@@ -73,6 +84,32 @@ int main(void) {
 	while(1){
         // Update display if needed
 		ShowClock(disp);
+
+        // Check UART message
+        if (msg_ready) {
+             // Parse time logic: find first ':'
+             // Simple search for HH:MM:SS pattern
+             for(int i=2; i<rx_idx-5; i++) {
+                if(rx_buf[i] == ':' && rx_buf[i+3] == ':') {
+                     int h = (rx_buf[i-2]-'0')*10 + (rx_buf[i-1]-'0');
+                     int m = (rx_buf[i+1]-'0')*10 + (rx_buf[i+2]-'0');
+                     int s = (rx_buf[i+4]-'0')*10 + (rx_buf[i+5]-'0');
+                     
+                     if(h>=0 && h<24 && m>=0 && m<60 && s>=0 && s<60) {
+                         currentHour = h;
+                         currentMinutes = m;
+                         // currentSeconds is derived from halfSeconds
+                         currentSeconds = s;
+                         halfSeconds = s * 2;
+                         sec32 = 0;
+                         hflag = mflag = sflag = hsflag = true;
+                     }
+                     break;
+                }
+             }
+             rx_idx = 0;
+             msg_ready = false;
+        }
         
         // Read Buttons
 		int buttons = disp.GetKey();
@@ -181,4 +218,37 @@ void Timer_A(void)
 	if(currentHour==24){
 			currentHour=0;
 	}
+}
+
+void InitUART() {
+    P1SEL |= BIT1 + BIT2 ; // P1.1 = RXD, P1.2=TXD
+    P1SEL2 |= BIT1 + BIT2; 
+    UCA0CTL1 |= UCSSEL_2; // SMCLK
+    UCA0BR0 = 104;        // 1MHz 9600
+    UCA0BR1 = 0; 
+    UCA0MCTL = UCBRS0;    // Modulation UCBRSx = 1
+    UCA0CTL1 &= ~UCSWRST; // Initialize USCI state machine
+    IE2 |= UCA0RXIE;      // Enable USCI_A0 RX interrupt
+}
+
+// UART RX Interrupt
+#if defined(__GNUC__)
+__attribute__((interrupt(USCIAB0RX_VECTOR)))
+void USCI0RX_ISR(void)
+#elif defined(__TI_COMPILER_VERSION__) || defined(__MSP430__)
+#pragma vector=USCIAB0RX_VECTOR
+__interrupt void USCI0RX_ISR(void)
+#else
+void USCI0RX_ISR(void)
+#endif
+{
+    // Check if interrupt is from USCI_A0
+    if (IFG2 & UCA0RXIFG) {
+        char c = UCA0RXBUF;
+        if(c == '\n') {
+            msg_ready = true;
+        } else if (rx_idx < 63) {
+            rx_buf[rx_idx++] = c;
+        }
+    }
 }
